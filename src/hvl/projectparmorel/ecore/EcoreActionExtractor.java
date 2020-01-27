@@ -1,4 +1,4 @@
-package hvl.projectparmorel.modelrepair;
+package hvl.projectparmorel.ecore;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -8,27 +8,26 @@ import java.util.Map;
 
 import org.eclipse.emf.ecore.impl.EPackageImpl;
 
-import hvl.projectparmorel.knowledge.Action;
+import hvl.projectparmorel.general.Action;
+import hvl.projectparmorel.general.ActionExtractor;
+import hvl.projectparmorel.general.Error;
+import hvl.projectparmorel.knowledge.Knowledge;
+import hvl.projectparmorel.modelrepair.SerializableMethod;
 
-public class ActionExtractor {
-	private hvl.projectparmorel.knowledge.Knowledge  knowledge;
+public class EcoreActionExtractor implements ActionExtractor {
+	private Knowledge knowledge;
 	
-	protected ActionExtractor(hvl.projectparmorel.knowledge.Knowledge knowledge) {
+	public EcoreActionExtractor(Knowledge knowledge) {
 		this.knowledge = knowledge;
 	}
 	
-	/**
-	 * Extract all the actions that has the potential to solve the specified errors.
-	 * 
-	 * @param errors
-	 * @return
-	 */
-	protected List<Action> extractActionsFor(List<Error> errors) {
+	@Override
+	public List<Action> extractActionsFor(List<Error> errors) {
 		Map<Integer, Action> actionsFound = new HashMap<Integer, Action>();
 
 		for (Error error : errors) {
 			if (!knowledge.getQTable().containsErrorCode(error.getCode())) {
-				List<?> contexts = (List<?>) error.getContexts();
+				List<?> contexts = error.getContexts();
 				actionsFound = addMethodsFromContextList(actionsFound, contexts);
 			}
 		}
