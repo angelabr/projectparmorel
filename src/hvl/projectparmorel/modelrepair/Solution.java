@@ -1,6 +1,7 @@
 package hvl.projectparmorel.modelrepair;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 import hvl.projectparmorel.general.AppliedAction;
@@ -12,7 +13,7 @@ import hvl.projectparmorel.reward.RewardCalculator;
  * 2019 
  * Western Norway University of Applied Sciences Bergen - Norway
  */
-public class Solution implements Comparable<Solution> {
+public abstract class Solution implements Comparable<Solution> {
 	private int id;
 	private List<AppliedAction> sequence;
 	private double weight;
@@ -23,6 +24,7 @@ public class Solution implements Comparable<Solution> {
 	public Solution() {
 		super();
 		weight = 0.0;
+		sequence = new ArrayList<>();
 	}
 
 	public Solution(int id, List<AppliedAction> seq, double weight, File model) {
@@ -32,6 +34,13 @@ public class Solution implements Comparable<Solution> {
 		this.weight = weight;
 		this.model = model;
 	}
+	
+	/**
+	 * Calculates the difference between the solution and the original model.
+	 * 
+	 * @return the calculated distance. Returns -1 if the distance could not be calculated.
+	 */
+	public abstract double calculateDistanceFromOriginal();
 	
 	/**
 	 * Deletes the associated file;
