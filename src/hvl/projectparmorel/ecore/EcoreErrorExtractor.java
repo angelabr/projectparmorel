@@ -4,7 +4,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import java.util.logging.Logger;
 
 import org.eclipse.emf.common.util.Diagnostic;
 import org.eclipse.emf.ecore.EObject;
@@ -16,22 +15,21 @@ import org.eclipse.emf.ecore.util.Diagnostician;
 
 import hvl.projectparmorel.general.Error;
 import hvl.projectparmorel.general.ErrorExtractor;
+import hvl.projectparmorel.general.ModelType;
 
 public class EcoreErrorExtractor implements ErrorExtractor {
 
 	private Set<Integer> unsuportedErrorCodes;
-	private Logger logger;
 
-	public EcoreErrorExtractor(Set<Integer> unsuportedErrorCodes) {
-		logger = Logger.getGlobal();
-		this.unsuportedErrorCodes = unsuportedErrorCodes;
+	public EcoreErrorExtractor() {
+		this.unsuportedErrorCodes = ModelType.ECORE.getUnsupportedErrorCodes();
 	}
 
 	@Override
-	public List<Error> extractErrorsFrom(Object model) {
+	public List<Error> extractErrorsFrom(Object model, boolean includeUnsupported) {
 		if (model instanceof Resource) {
 			Resource modelAsResource = (Resource) model;
-			return extractErrorsFrom(modelAsResource);
+			return extractErrorsFrom(modelAsResource, includeUnsupported);
 		}
 		throw new IllegalArgumentException("The model has to be of type org.eclipse.emf.ecore.resource.Resource");
 	}
@@ -40,9 +38,10 @@ public class EcoreErrorExtractor implements ErrorExtractor {
 	 * Extracts the errors from the provided model.
 	 * 
 	 * @param model
+	 * @param includeUnsupported is a boolean that specifies wheter or not to include the unsupported errors.
 	 * @return a list of errors found in the model
 	 */
-	private List<Error> extractErrorsFrom(Resource model) {
+	private List<Error> extractErrorsFrom(Resource model, boolean includeUnsupported) {
 		List<Error> errors = new ArrayList<Error>();
 
 		Diagnostic diagnostic = validateMode(model);
@@ -50,10 +49,9 @@ public class EcoreErrorExtractor implements ErrorExtractor {
 			for (Diagnostic child : diagnostic.getChildren()) {
 				Error error = getErrorFor(child);
 				if (error != null) {
-					if (unsuportedErrorCodes.contains(error.getCode())) {
-						logger.warning("Encounteded unsupported error " + error.getCode() + ". Message: "
-								+ error.getMessage() + ". Skipping error.");
-					} else {
+					if(includeUnsupported) {
+						errors.add(error);
+					} else if (!unsuportedErrorCodes.contains(error.getCode())) {
 						errors.add(error);
 					}
 				}
@@ -81,15 +79,11 @@ public class EcoreErrorExtractor implements ErrorExtractor {
 	 * @return the error for the specified diagnostic
 	 */
 	private Error getErrorFor(Diagnostic diagnostic) {
-		if (diagnostic.getCode() != 1) { // we don't remember what error code 1 is. Could it be an error at package
-											// level?
-			if (isPackageOrTwoFeatures(diagnostic)) {
-				return new Error(diagnostic.getCode(), diagnostic.getMessage(), diagnostic.getData());
-			} else {
-				return getErrorFromErrorCode(diagnostic);
-			}
+		if (isPackageOrTwoFeatures(diagnostic)) {
+			return new Error(diagnostic.getCode(), diagnostic.getMessage(), diagnostic.getData());
+		} else {
+			return getErrorFromErrorCode(diagnostic);
 		}
-		return null;
 	}
 
 	/**

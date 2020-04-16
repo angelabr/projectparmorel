@@ -1,13 +1,16 @@
 package hvl.projectparmorel.ecore;
 
 import java.io.IOException;
+import java.util.Collection;
 
 import org.eclipse.emf.common.util.URI;
+import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.resource.Resource;
 import org.eclipse.emf.ecore.resource.ResourceSet;
-import org.eclipse.emf.ecore.util.EcoreUtil;
+import org.eclipse.emf.ecore.util.EcoreUtil.Copier;
 
 import hvl.projectparmorel.general.Model;
+import hvl.projectparmorel.general.ModelType;
 
 public class EcoreModel implements Model {
 	private Resource model;
@@ -26,7 +29,11 @@ public class EcoreModel implements Model {
 	@Override
 	public Object getRepresentationCopy() {
 		modelCopy.getContents().clear();
-		modelCopy.getContents().addAll(EcoreUtil.copyAll(model.getContents()));
+	
+		Copier copier = new Copier();
+		Collection<EObject> contents = copier.copyAll(model.getContents());
+		modelCopy.getContents().addAll(contents);
+		
 		return modelCopy;
 	}
 
@@ -39,5 +46,10 @@ public class EcoreModel implements Model {
 		} catch (IOException exception) {
 			exception.printStackTrace();
 		}
+	}
+
+	@Override
+	public ModelType getModelType() {
+		return ModelType.ECORE;
 	}
 }

@@ -4,9 +4,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 
@@ -40,25 +39,21 @@ import hvl.projectparmorel.general.Model;
 import hvl.projectparmorel.general.ModelProcessor;
 import hvl.projectparmorel.knowledge.Knowledge;
 import hvl.projectparmorel.knowledge.QTable;
-import hvl.projectparmorel.reward.RewardCalculator;
 
 public class EcoreModelProcessor implements ModelProcessor {
 	private Knowledge knowledge;
 	private List<Error> errors;
-	private RewardCalculator rewardCalculator;
 	private ErrorExtractor errorExtractor;
 
-	public EcoreModelProcessor(Knowledge knowledge, RewardCalculator rewardCalculator,
-			Set<Integer> unsupportedErrorCodes) {
+	public EcoreModelProcessor(Knowledge knowledge) {
 		this.knowledge = knowledge;
-		this.rewardCalculator = rewardCalculator;
-		errorExtractor = new EcoreErrorExtractor(unsupportedErrorCodes);
+		errorExtractor = new EcoreErrorExtractor();
 	}
 
 	@Override
-	public void initializeQTableForErrorsInModel(Model model) {
+	public Set<Integer> initializeQTableForErrorsInModel(Model model) {
 		if (model instanceof EcoreModel) {
-			initializeQTableForErrorsInModel((EcoreModel) model);
+			return initializeQTableForErrorsInModel((EcoreModel) model);
 		} else {
 			throw new IllegalArgumentException(
 					"The method must be called with a model of type hvl.projectparmorel.ecore.EcoreModel");
@@ -67,19 +62,25 @@ public class EcoreModelProcessor implements ModelProcessor {
 
 	/**
 	 * Goes through all the errors in the model, and if the error is not in the
-	 * q-table is is added along with a matching action.
+	 * q-table is is added along with matching actions. Alternatively the error code
+	 * is added to a set of unsupported errors.
 	 * 
 	 * @param model
 	 * @param destinationURI
+	 * @return a set of unsupported error codes that was not added to the Q-table
 	 */
-	private void initializeQTableForErrorsInModel(EcoreModel model) {
-		errors = errorExtractor.extractErrorsFrom(model.getRepresentation());
+	private Set<Integer> initializeQTableForErrorsInModel(EcoreModel model) {
+		errors = errorExtractor.extractErrorsFrom(model.getRepresentationCopy(), false);
 
 		ActionExtractor actionExtractor = new EcoreActionExtractor(knowledge);
 		List<Action> possibleActions = actionExtractor.extractActionsFor(errors);
 
+		Set<Integer> unsupportedErrors = new HashSet<>();
+
 		for (Error error : errors) {
-			if (!knowledge.getQTable().containsErrorCode(error.getCode())) {
+			if (!knowledge.getQTable().containsErrorCode(error.getCode())
+					&& !unsupportedErrors.contains(error.getCode())) {
+				boolean actionForErrorFound = false;
 				for (int i = 0; i < error.getContexts().size(); i++) {
 					if (error.getContexts().get(i) != null) {
 						for (Action action : possibleActions) {
@@ -87,7 +88,8 @@ public class EcoreModelProcessor implements ModelProcessor {
 								Resource modelCopy = (Resource) model.getRepresentationCopy();
 								List<Error> newErrors = tryApplyAction(error, action, modelCopy, i);
 								if (newErrors != null) {
-									if (!errorStillExists(newErrors, error, i)) {
+									if (!errorStillExists(newErrors, error)) {
+										actionForErrorFound = true;
 										Action newAction = new Action(action.getCode(), action.getMessage(),
 												action.getMethod(), i);
 										initializeQTableForAction(error, newAction);
@@ -97,8 +99,12 @@ public class EcoreModelProcessor implements ModelProcessor {
 						}
 					}
 				}
+				if (!actionForErrorFound) {
+					unsupportedErrors.add(error.getCode());
+				}
 			}
 		}
+		return unsupportedErrors;
 	}
 
 	/**
@@ -127,10 +133,10 @@ public class EcoreModelProcessor implements ModelProcessor {
 		}
 		return false;
 	}
-	
+
 	@Override
 	public List<Error> tryApplyAction(Error error, Action action, Model model) {
-		if(model instanceof EcoreModel) {
+		if (model instanceof EcoreModel) {
 			return tryApplyAction(error, action, (Resource) model.getRepresentation(), action.getHierarchy());
 		}
 		throw new IllegalArgumentException("The model needs to be of type org.eclipse.emf.ecore.resource.Resource");
@@ -157,7 +163,7 @@ public class EcoreModelProcessor implements ModelProcessor {
 			for (int i = 0; i < ePackage.getEClassifiers().size() && !success; i++) {
 				success = identifyObjectTypeAndApplyAction(error, action, object, ePackage.getEClassifiers().get(i));
 			}
-			List<Error> newErrors = errorExtractor.extractErrorsFrom(model);
+			List<Error> newErrors = errorExtractor.extractErrorsFrom(model, false);
 			return newErrors;
 		}
 		return null;
@@ -185,7 +191,7 @@ public class EcoreModelProcessor implements ModelProcessor {
 			if (success)
 				return true;
 			return handleOperations(error, action, object, eClass);
-		} else if (isEnum(object)) {
+		} else if (isEnum(object) && eClassifier instanceof EEnumImpl) {
 			return handleEnum(error, action, object, eClassifier);
 		}
 		return false;
@@ -196,29 +202,26 @@ public class EcoreModelProcessor implements ModelProcessor {
 	 * 
 	 * @param newErrors
 	 * @param error
-	 * @param index
 	 * @return true if the error still exists
 	 */
-	private boolean errorStillExists(List<Error> newErrors, Error error, int index) {
-		Map<Integer, Error> duplicateErrors = findDuplicates(errors);
-		Map<Integer, Error> newErrorDuplicates = findDuplicates(newErrors);
-		if (duplicateErrors.containsKey(error.getCode()) && newErrorDuplicates.containsKey(error.getCode())) {
-			return true;
-		} else {
-			if (error.getContexts().get(index).getClass() == EGenericTypeImpl.class) {
-				EGenericTypeImpl eg = (EGenericTypeImpl) error.getContexts().get(index);
-				if (eg.getETypeArguments().size() > 0) {
-					return false;
-				}
-			}
-			for (int i = 0; i < newErrors.size(); i++) {
-				if (newErrors.get(i).getCode() == error.getCode()
-						&& newErrors.get(i).getContexts().size() == error.getContexts().size()) {
-					return true;
-				}
+	private boolean errorStillExists(List<Error> newErrors, Error error) {
+		int errorCode = error.getCode();
+		int numberOfErrorCodeOriginally = 0;
+
+		for (Error e : errors) {
+			if (e.getCode() == errorCode) {
+				numberOfErrorCodeOriginally++;
 			}
 		}
-		return false;
+
+		int numberOfErrorCodeNow = 0;
+		for (Error e : newErrors) {
+			if (e.getCode() == errorCode) {
+				numberOfErrorCodeNow++;
+			}
+		}
+
+		return numberOfErrorCodeNow >= numberOfErrorCodeOriginally;
 	}
 
 	/**
@@ -384,7 +387,7 @@ public class EcoreModelProcessor implements ModelProcessor {
 	 * @param error
 	 * @param action
 	 * @param object
-	 * @param eClassifier
+	 * @param eClassifier of type org.eclipse.emf.ecore.impl.EEnumImpl
 	 * @return true if an action is successfully applied, false otherwise
 	 */
 	private boolean handleEnum(Error error, Action action, EObject object, EClassifier eClassifier) {
@@ -422,8 +425,7 @@ public class EcoreModelProcessor implements ModelProcessor {
 		int contextId = action.getContextId();
 
 		if (!actionDirectory.containsActionForErrorAndContext(error.getCode(), contextId, action.getCode())) {
-			double weight = rewardCalculator.initializeWeightFor(action);
-			action.setWeight(weight);
+			action.setWeight(0);
 			actionDirectory.setAction(error.getCode(), contextId, action);
 		}
 	}
@@ -682,24 +684,5 @@ public class EcoreModelProcessor implements ModelProcessor {
 		val = values.toArray(val);
 
 		return val;
-	}
-
-	/**
-	 * Finds duplicate errors from list
-	 * 
-	 * @param errors
-	 * @return a map containing all the duplicates
-	 */
-	private Map<Integer, Error> findDuplicates(List<Error> errors) {
-		Map<Integer, Error> duplicateErrors = new HashMap<>();
-		for (int i = 0; i < errors.size(); i++) {
-			for (int j = 0; j < errors.size(); j++) {
-				if (errors.get(i).getCode() == errors.get(j).getCode() && !errors.get(i).getContexts().toString()
-						.contentEquals(errors.get(j).getContexts().toString())) {
-					duplicateErrors.put(errors.get(i).getCode(), errors.get(i));
-				}
-			}
-		}
-		return duplicateErrors;
 	}
 }
