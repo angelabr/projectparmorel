@@ -37,14 +37,13 @@ public abstract class QModelFixer implements ModelFixer {
 	 * The name of the {@link java.util.logging.Logger} used.
 	 */
 	public static final String LOGGER_NAME = "MyLog";
+	private final double MIN_ALPHA = 1.0; // Learning rate
+	private final double GAMMA = 1.0; // Eagerness - 0 looks in the near future, 1 looks in the distant future
+	private final int MIN_EPISODE_STEPS = 12;
 	/**
 	 * The learning rate of the algorithm
 	 */
 	protected static final double ALPHA = 1.0;
-	/**
-	 * Eagerness. 0 looks in the near future, 1 looks in the distant future
-	 */
-	protected static final double GAMMA = 1.0;
 	private static Logger LOGGER = Logger.getLogger(LOGGER_NAME);
 	private final int MIN_EPISODE_STEPS = 20;
 
@@ -125,7 +124,7 @@ public abstract class QModelFixer implements ModelFixer {
 	 * Updates the dependencies after reward calculator has changed.
 	 */
 	protected abstract void updateRewardCalculator();
-
+ 
 	/**
 	 * Saves the knowledge
 	 */
@@ -426,6 +425,9 @@ public abstract class QModelFixer implements ModelFixer {
 		Action action = chooseAction(currentErrorToFix);
 		LOGGER.info("Chose action " + action.getName() + " in context " + action.getContextId() + " with weight "
 				+ action.getWeight());
+
+		double alpha = 1.0;
+
 
 		errorsToFix.clear();
 		errorsToFix = modelProcessor.tryApplyAction(currentErrorToFix, action, episodeModel);

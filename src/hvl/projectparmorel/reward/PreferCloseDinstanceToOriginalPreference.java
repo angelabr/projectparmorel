@@ -28,7 +28,7 @@ public class PreferCloseDinstanceToOriginalPreference extends Preference impleme
 	}
 
 	@Override
-	public int rewarcalculateRewardFor(Solution solution, Model model, QTable qTable) {
+	public int rewardcalculateRewardFor(Solution solution, Model model, QTable qTable) {
 		long startTime = System.currentTimeMillis();
 		try {
 			double distance = solution.calculateDistanceFromOriginal();
